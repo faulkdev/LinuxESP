@@ -1,0 +1,29 @@
+#cloud-config
+# Render this template per device with render_autoinstall.py. Required tags
+# intentionally make the published template invalid for direct installation.
+autoinstall:
+  version: 1
+  identity:
+    hostname: !device HOSTNAME
+    username: !device USERNAME
+    password: !device PASSWORD_HASH
+    groups:
+      override: [sudo]
+  user-data:
+    disable_root: true
+    ssh_pwauth: false
+  ssh:
+    install-server: false
+  storage:
+    layout:
+      name: lvm
+      password: !device LUKS_PASSPHRASE
+  keyboard:
+    layout: us
+  locale: en_US.UTF-8
+  timezone: Etc/UTC
+  updates: security
+  apt:
+    fallback: abort
+    geoip: false
+  shutdown: reboot

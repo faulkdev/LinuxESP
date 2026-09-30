@@ -1,0 +1,6 @@
+# A rendered file contains a per-device LUKS recovery secret.
+/autoinstall.yaml
+/device-secrets*.json
+/recovery*.json
+__pycache__/
+.pytest_cache/

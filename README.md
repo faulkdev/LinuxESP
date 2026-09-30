@@ -1,187 +1,126 @@
-<h1 align="center">🐧 LinuxESP: Automating Ubuntu Deployments</h1>
+# LinuxESP: private Ubuntu Desktop installation for managed devices
 
-<div align="center">
-  <p>
-    <a href="https://twitter.com/UgurKocDe">
-      <img src="https://img.shields.io/badge/Follow-@UgurKocDe-1DA1F2?style=flat&logo=x&logoColor=white" alt="Twitter Follow"/>
-    </a>
-    <a href="https://www.linkedin.com/in/ugurkocde/">
-      <img src="https://img.shields.io/badge/LinkedIn-Connect-0A66C2?style=flat&logo=linkedin" alt="LinkedIn"/>
-    </a>
-    <img src="https://img.shields.io/github/license/ugurkocde/IntuneAssignmentChecker?style=flat" alt="License"/>
-  </p>
-</div>
+This repository contains a **per-device** Ubuntu Desktop autoinstall template. The
+published template is intentionally not installable. `render_autoinstall.py`
+generates a unique LUKS recovery passphrase and writes both the installation
+configuration and recovery record to owner-only files. No Intune or Defender
+tenant package, shared disk secret, or example application is embedded.
+The former public `autoinstall.yaml` URL is retired; use the renderer for each
+device.
 
-LinuxESP is an automated Ubuntu Linux deployment solution that mimics the Windows Autopilot Enrollment Status Page (ESP) experience. It simplifies the process of enrolling Ubuntu workstations into Intune and deploying Microsoft Defender for Endpoint (MDE), eliminating the need for manual installation of tools like Intune Portal, MDE, and Edge, while also supporting customizable development environments.
+The installer prepares an encrypted workstation. An operator must complete
+Intune enrollment, Defender onboarding, policy assignment, and evidence checks
+after installation. The generated file itself does not establish compliance.
 
-<p align="center">
-  <img src="media/screenshot.png" width="75%" alt="Screenshot">
-</p>
+## Requirements
 
-## 📑 Table of Contents
-- [📑 Table of Contents](#-table-of-contents)
-- [🔄 What is Autoinstall?](#-what-is-autoinstall)
-- [🎯 Overview](#-overview)
-- [✨ Features](#-features)
-- [🛠️ Installation Components Breakdown](#️-installation-components-breakdown)
-  - [Base Configuration](#base-configuration)
-  - [Package Installation](#package-installation)
-  - [Microsoft Enterprise Integration](#microsoft-enterprise-integration)
-  - [System Cleanup](#system-cleanup)
-- [📋 Prerequisites](#-prerequisites)
-- [📖 Usage](#-usage)
-  - [How it Works](#how-it-works)
-- [⚙️ Customization Examples](#️-customization-examples)
-  - [Adding Snap Packages](#adding-snap-packages)
-  - [Installing Additional apt Packages](#installing-additional-apt-packages)
-  - [Removing Additional Bloatware](#removing-additional-bloatware)
-- [🤝 Contributing](#-contributing)
-- [📚 More Resources](#-more-resources)
-- [📄 License](#-license)
+- Ubuntu Desktop 24.04 LTS x86-64 with GNOME and supported hardware. Check
+  [current Intune Linux requirements](https://learn.microsoft.com/en-us/intune/device-enrollment/guide-linux)
+  before approving another release. Ubuntu Server is not a substitute for the
+  managed Desktop lane.
+- A protected device inventory entry, a unique salted local password hash from
+  the approved credential vault, and an approved location for the LUKS recovery
+  record. The local account has the `sudo` group for installation operations;
+  root login and SSH server installation are disabled.
+- A private output directory owned by the operator with mode `0700`.
+- A protected delivery channel for the rendered configuration. Never host it at
+  a public or long-lived raw URL: autoinstall's LUKS password is present in the
+  file by design. Revoke the delivery URL and remove local copies after use;
+  retain the recovery secret only in the approved vault.
 
-## 🔄 What is Autoinstall?
+[Canonical documents](https://canonical-subiquity.readthedocs-hosted.com/en/latest/reference/autoinstall-reference.html#storage)
+that an `lvm` layout with a password enables LUKS encryption. Its
+[identity section](https://canonical-subiquity.readthedocs-hosted.com/en/latest/reference/autoinstall-reference.html#identity)
+requires an encrypted password hash. The required tags in the committed
+template make direct use fail before a fixed secret can become an installation
+default.
 
-"Autoinstall" is a feature in Ubuntu Server and, as of version 24.04, also supported in Ubuntu Desktop. It allows fully automated installation of the operating system using a pre-configured YAML file. This file specifies how the system should be installed and configured, including partitioning, user setup, installed packages, and custom scripts. It replaces the traditional manual installation process, providing consistency and speed for large-scale deployments.
+## Render one device
 
-<p align="center">
-  <img src="media/autoinstall.png" width="80%" alt="Autoinstall">
-</p>
+Create a mode-`0600` JSON specification in a mode-`0700` directory:
 
-LinuxESP leverages the autoinstall functionality to streamline the setup of Ubuntu systems for enterprise use. By defining a detailed configuration file (`autoinstall.yaml`), administrators can ensure that systems are set up identically every time, without requiring manual intervention.
-
-## 🎯 Overview
-
-This project provides an automated installation configuration that:
-- Updates and configures Ubuntu Linux
-- Deploys Microsoft Management and Security tools (Intune Portal, Microsoft Defender for Endpoint, Microsoft Edge)
-- Installs applications (customizable via Snap or apt)
-- Removes unnecessary default applications
-- Configures the system for enterprise use
-
-## ✨ Features
-
-- 🔒 Secure LVM-based storage configuration
-- 🛡️ Microsoft Defender for Endpoint (MDE) integration
-- 📱 Microsoft Intune management capabilities
-- 💻 Customizable software deployment
-- 🧹 Bloatware removal
-- 🔄 Automated updates
-
-## 🛠️ Installation Components Breakdown
-
-> [!TIP]
-> This configuration is just an example. You can download and customize the `autoinstall.yaml` file to your needs. You just have to host it somewhere that is accessible for the device.
-
-The `autoinstall.yaml` configuration performs the following steps:
-
-### Base Configuration
-- Sets up LVM storage layout
-- Configures keyboard layout andlocale
-- Disables root access
-- Configures basic system settings
-
-<p align="center">
-  <img src="media/configuration.png" width="80%" alt="Configuration">
-</p>
-
-### Package Installation
-- **Base Utilities**: curl, wget
-- **Customizable Software Deployment**:
-  - Via Snap Store (examples in current config):
-    - Visual Studio Code
-    - Postman API Platform
-    - PowerShell
-    - PyCharm Community Edition
-  - Via late-commands:
-    - Any apt packages
-    - Custom installation scripts
-    - Direct downloads
-
-> **Note**: The applications listed above are just examples. You can:
-> - Choose different applications from the [Snap Store](https://snapcraft.io/store)
-> - Add custom apt repositories and packages
-> - Include additional installation commands in the `late-commands` section
-> - Remove or modify any of the example applications
-
-### Microsoft Enterprise Integration
-1. **Microsoft Intune Portal**
-   - Adds Microsoft package repository
-   - Installs Intune management agent
-
-2. **Microsoft Defender for Endpoint (MDE)**
-   - Downloads and executes MDE installer
-   - Configures MDE service for automatic startup
-   - Enables real-time protection
-
-3. **Microsoft Edge**
-   - Adds Edge repository
-   - Installs stable version of Microsoft Edge
-
-### System Cleanup
-- Removes pre-installed applications:
-  - LibreOffice suite
-  - Remmina remote desktop client
-  - Transmission torrent client
-- Performs system cleanup
-- Removes temporary installation files
-
-## 📋 Prerequisites
-
-- Ubuntu Desktop 24.04 LTS
-- Internet connection during installation
-
-## 📖 Usage
-
-To get started with LinuxESP, you can utilize the "Automated Installation" option during the Ubuntu installation setup assistant. This process is streamlined by the hosted configuration file available at:
-
-**[https://autoinstall.ugurkoc.de](https://autoinstall.ugurkoc.de)**
-
-### How it Works
-
-<p align="center">
-  <img src="media/flow.png" width="100%" alt="Flow">
-</p>
-
-1. During the Ubuntu installation setup, select the "Automated Installation" option.
-2. The installer retrieves the autoinstall configuration file from the above URL.
-3. The system installs Ubuntu according to the specified configurations in `autoinstall.yaml`. This includes:
-   - Setting up storage and system configurations
-   - Installing required packages and applications
-   - Removing unnecessary software
-   - Enabling enterprise-ready features such as Intune and MDE integration.
-4. Once the installation completes, the system is fully configured and ready for use.
-
-## ⚙️ Customization Examples
-
-### Adding Snap Packages
-```yaml
-snaps:
-  - name: vlc
-  - name: slack
+```json
+{
+  "device_id": "asset-041",
+  "hostname": "asset-041",
+  "username": "enrolloperator",
+  "password_hash": "<unique salted SHA-512 or yescrypt hash from your vault>"
+}
 ```
 
-### Installing Additional apt Packages
-Add the following to the `late-commands` section:
-```yaml
-- curtin in-target --target=/target -- apt-get install -y htop git
+The example hash text above is intentionally invalid. Supply a real,
+device-specific hash; do not place a plaintext account password in this file.
+Render from the repository root:
+
+```bash
+python3 render_autoinstall.py \
+  --spec /private/device.json \
+  --output /private/autoinstall.yaml \
+  --recovery /private/recovery.json
 ```
 
-### Removing Additional Bloatware
-Add the following to the `late-commands` section:
-```yaml
-- curtin in-target --target=/target -- apt-get purge -y thunderbird
-```
+The command refuses weak/invalid input, group-readable files and directories,
+unknown template markers, and existing outputs. It prints no secrets. Escrow
+`recovery.json` before releasing the installation file. Treat the rendered YAML
+as a secret and use a distinct specification and render operation per device.
 
-## 🤝 Contributing
+## Validate and install
 
-LinuxESP is an open-source project and contributions are welcome! If you have any suggestions, improvements, or bug fixes, please feel free to submit a pull request.
+1. Run `python3 -m unittest discover -s tests -v` after installing
+   `requirements-dev.txt` into a local virtual environment.
+2. Validate the **rendered** YAML using Canonical's
+   [`validate-autoinstall-user-data.py`](https://canonical-subiquity.readthedocs-hosted.com/en/latest/howto/autoinstall-validation.html).
+   Canonical notes that schema validation cannot prove media and disk selection
+   are valid for a specific machine.
+3. Perform a clean Ubuntu Desktop 24.04 installation in a VM with a disposable
+   test specification before adopting a changed template. Verify GNOME login,
+   a disabled root login, no SSH server, encrypted LVM, and recovery-key unlock.
+   Repeat on representative physical hardware; the VM test alone cannot prove
+   disk matching or device support.
+4. Deliver each rendered file through an authenticated, expiring endpoint or
+   protected removable media. Confirm the selected target disk before install.
+   Revoke the endpoint afterward and record installation and recovery escrow
+   evidence.
 
-## 📚 More Resources
+The template does not add third-party APT repositories. This avoids the
+unscoped `trusted.gpg.d` key and unpinned package installation from the earlier
+example. Install Intune and Defender using their current vendor-supported
+instructions after the device boots.
 
-- [Autoinstall Documentation](https://canonical-subiquity.readthedocs-hosted.com/en/latest/reference/autoinstall-reference.html)
-- [Enroll device in Intune](https://learn.microsoft.com/en-us/mem/intune/user-help/enroll-device-linux)
-- [Install MDE manually](https://learn.microsoft.com/en-us/defender-endpoint/linux-install-manually)
+## Operator onboarding to Intune and Defender
 
-## 📄 License
+1. Verify corporate ownership, Ubuntu Desktop/GNOME version, encryption,
+   approved outbound connectivity, Intune and Defender licenses, and the
+   required assignments for this physical-device lane.
+2. Install Microsoft Intune Portal and Microsoft Edge using the current
+   [Microsoft Linux app procedure](https://learn.microsoft.com/en-us/intune/user-help/company-portal/intune-app-linux).
+   Use a repository key scoped with `signed-by`; do not add it to global
+   `trusted.gpg.d`. Record package versions and repository fingerprints.
+3. Have the named user sign in to the Intune app and complete
+   [Linux enrollment](https://learn.microsoft.com/en-us/intune/user-help/enrollment/enroll-linux).
+   Record the Entra/Intune device IDs and verify device ownership, check-in,
+   compliance, encryption, and assignments in the tenant. Enrollment is a
+   user action; it is not completed by this autoinstall file.
+4. Download the **tenant-specific** Defender deployment tool from that tenant's
+   Defender portal. Run the vendor tool's `--pre-req` and
+   `--connectivity-test` checks, correct failures, then run the tool to install
+   and onboard. Follow the current
+   [Microsoft deployment-tool procedure](https://learn.microsoft.com/en-us/defender-endpoint/linux-install-with-defender-deployment-tool).
+   Never commit or reuse the package across tenants.
+5. Verify `mdatp health`, the expected tenant `org_id`, real-time protection,
+   signature freshness, scan schedule, and the device in Defender inventory.
+   Test a detection with an approved harmless method and preserve the result.
+   A weekly malware-scan policy and hardening/compliance modules must be
+   assigned separately; this installer does not claim those controls.
 
-This project is licensed under the MIT License. See the LICENSE file for details.
+Review [NATTOMR's Linux hardening modules](https://github.com/NATTOMR/Linux-Server-Hardening-Secure-Configuration.)
+as pattern material for maintained workstation hardening. Do not execute or
+vendor those server modules unchanged: their platform assumptions and dry-run
+behavior require separate review and tests for Ubuntu Desktop.
+
+## Sources
+
+- [Canonical autoinstall reference](https://canonical-subiquity.readthedocs-hosted.com/en/latest/reference/autoinstall-reference.html)
+- [Canonical pre-install validation](https://canonical-subiquity.readthedocs-hosted.com/en/latest/howto/autoinstall-validation.html)
+- [Microsoft Intune Linux enrollment](https://learn.microsoft.com/en-us/intune/device-enrollment/guide-linux)
+- [Microsoft Defender Linux deployment tool](https://learn.microsoft.com/en-us/defender-endpoint/linux-install-with-defender-deployment-tool)
