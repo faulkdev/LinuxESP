@@ -63,7 +63,9 @@ python3 render_autoinstall.py \
 The command refuses weak/invalid input, group-readable files and directories,
 unknown template markers, wildcard disk serials, an unapproved source ID, and
 existing outputs. The disk serial is rendered as an exact match so an
-unrelated largest disk cannot be selected. It prints no secrets. Escrow
+unrelated largest disk cannot be selected. An installer-side preflight
+enumerates whole disks and aborts unless exactly one reports that `ID_SERIAL`,
+which also rejects duplicate serials. It prints no secrets. Escrow
 `recovery.json` before releasing the installation file. Treat the rendered YAML
 as a secret and use a distinct specification and render operation per device.
 
@@ -83,17 +85,26 @@ that a serial matches a particular machine.
 
 1. Run `python3 -m unittest discover -s tests -v` after installing
    `requirements-dev.txt` into a local virtual environment.
-2. Validate the **rendered** YAML using Canonical's
-   [`validate-autoinstall-user-data.py`](https://canonical-subiquity.readthedocs-hosted.com/en/latest/howto/autoinstall-validation.html).
-   Canonical notes that schema validation cannot prove media and disk selection
-   are valid for a specific machine. Validate against the same ISO used for the
-   installation, including its `casper/install-sources.yaml`, and manually
-   confirm the exact target serial.
+2. Treat the rendered structure and the target ISO as separate validation
+   gates. The repository tests validate the pinned `source.id`, the encrypted
+   LVM match, and the duplicate-serial preflight. Canonical's standalone
+   [`validate-autoinstall-user-data.py`](https://canonical-subiquity.readthedocs-hosted.com/en/latest/howto/autoinstall-validation.html)
+   assumes an Ubuntu Server target and `synthesized` source; it may reject the
+   valid `ubuntu-desktop` source before checking the Desktop configuration.
+   Run it when its documented dependencies are available and retain its output,
+   but do not treat that server-oriented result as the Desktop ISO gate.
+   Before installation, verify that the approved ISO's
+   `casper/install-sources.yaml` contains `ubuntu-desktop`, that the rendered
+   source ID matches it, and that the target device has exactly one matching
+   `ID_SERIAL`. Canonical states that schema validation cannot prove media or
+   disk selection for a particular machine.
 3. Perform a clean Ubuntu Desktop 24.04 installation in a VM with a disposable
    test specification before adopting a changed template. Verify GNOME login,
    a disabled root login, no SSH server, encrypted LVM, and recovery-key unlock.
    Repeat on representative physical hardware; the VM test alone cannot prove
-   disk matching or device support.
+   disk matching or device support. `oem.install: false` and
+   `drivers.install: false` are explicit baseline choices; hardware requiring a
+   driver needs a separately reviewed, signed package decision.
 4. Deliver each rendered file through an authenticated, expiring endpoint or
    protected removable media. Confirm the selected target disk before install.
    Revoke the endpoint afterward and record installation and recovery escrow

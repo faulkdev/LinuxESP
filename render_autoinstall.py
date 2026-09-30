@@ -32,6 +32,19 @@ _MARKERS = {
 }
 
 
+def _shell_single_quote(value: str) -> str:
+    """Return a shell literal that cannot expand the device serial."""
+
+    return "'" + value.replace("'", "'\"'\"'") + "'"
+
+
+def _marker_count(template: str, marker: str) -> int:
+    """Count one marker without treating a longer marker as its prefix."""
+
+    pattern = rf"!device {re.escape(marker)}(?![A-Za-z0-9_])"
+    return len(re.findall(pattern, template))
+
+
 def _private_file(path: Path) -> None:
     details = path.lstat()
     if not stat.S_ISREG(details.st_mode) or details.st_uid != os.getuid():
@@ -132,10 +145,17 @@ def render_device_autoinstall(
         )
     rendered = template
     for marker, key in _MARKERS.items():
-        token = f"!device {marker}"
-        if template.count(token) != 1:
+        if _marker_count(template, marker) != 1:
             raise ValueError(f"Template must contain exactly one {marker} marker.")
-        rendered = rendered.replace(token, json.dumps(values[key]))
+        rendered = re.sub(
+            rf"!device {re.escape(marker)}(?![A-Za-z0-9_])",
+            json.dumps(values[key]),
+            rendered,
+        )
+    shell_token = "!device DISK_SERIAL_SHELL"
+    if _marker_count(template, "DISK_SERIAL_SHELL") != 1:
+        raise ValueError("Template must contain exactly one DISK_SERIAL_SHELL marker.")
+    rendered = rendered.replace(shell_token, _shell_single_quote(values["disk_serial"]))
     if "!device " in rendered:
         raise ValueError("Template contains an unknown device marker.")
 

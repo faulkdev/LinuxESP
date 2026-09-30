@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 import stat
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -56,6 +58,12 @@ class RenderAutoinstallTests(unittest.TestCase):
         )
         self.assertEqual(config["storage"]["layout"]["password"], "aB2_" * 12)
         self.assertEqual(config["source"]["id"], "ubuntu-desktop")
+        self.assertIs(config["oem"]["install"], False)
+        self.assertIs(config["drivers"]["install"], False)
+        preflight = config["early-commands"][0]
+        self.assertIn("lsblk -dnpo NAME,TYPE", preflight)
+        self.assertIn("ID_SERIAL", preflight)
+        self.assertIn('[ "$matches" -ne 1 ]', preflight)
         self.assertEqual(config["identity"]["hostname"], "asset-041")
         self.assertEqual(config["identity"]["groups"]["override"], ["sudo"])
         self.assertIs(config["user-data"]["disable_root"], True)
@@ -103,6 +111,68 @@ class RenderAutoinstallTests(unittest.TestCase):
             render_device_autoinstall(
                 source, self.spec_path, self.output_path, self.recovery_path
             )
+
+    def test_preflight_aborts_on_duplicate_serial_and_accepts_one_match(self) -> None:
+        with patch("render_autoinstall.secrets.token_urlsafe", return_value="aB2_" * 12):
+            render_device_autoinstall(
+                TEMPLATE, self.spec_path, self.output_path, self.recovery_path
+            )
+        config = yaml.safe_load(self.output_path.read_text(encoding="utf-8"))["autoinstall"]
+        preflight = config["early-commands"][0]
+        mock_bin = self.private_dir / "bin"
+        mock_bin.mkdir()
+        udevadm = mock_bin / "udevadm"
+        udevadm.write_text(
+            "#!/bin/sh\nprintf 'ID_SERIAL=NVME-SERIAL-041\\n'\n", encoding="utf-8"
+        )
+        udevadm.chmod(0o700)
+        lsblk = mock_bin / "lsblk"
+        lsblk.write_text(
+            "#!/bin/sh\nprintf '%s\\n' '/dev/sda disk' '/dev/sdb disk'\n",
+            encoding="utf-8",
+        )
+        lsblk.chmod(0o700)
+        environment = dict(os.environ, PATH=f"{mock_bin}:/usr/bin:/bin")
+        duplicate = subprocess.run(
+            ["bash", "-c", preflight],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+        self.assertNotEqual(duplicate.returncode, 0)
+        self.assertIn("found 2", duplicate.stderr)
+
+        udevadm.write_text(
+            "#!/bin/sh\ncase \"$3\" in --name=/dev/sda) printf 'ID_SERIAL=NVME-SERIAL-041\\n' ;; *) printf 'ID_SERIAL=OTHER\\n' ;; esac\n",
+            encoding="utf-8",
+        )
+        single = subprocess.run(
+            ["bash", "-c", preflight],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+        self.assertEqual(single.returncode, 0, single.stderr)
+
+    def test_preflight_shell_literal_quotes_serial(self) -> None:
+        self._write_spec(dict(self.spec, disk_serial="NVME'041"))
+        with patch("render_autoinstall.secrets.token_urlsafe", return_value="aB2_" * 12):
+            render_device_autoinstall(
+                TEMPLATE, self.spec_path, self.output_path, self.recovery_path
+            )
+        config = yaml.safe_load(self.output_path.read_text(encoding="utf-8"))["autoinstall"]
+        preflight = config["early-commands"][0]
+        self.assertIn("expected_serial='NVME'\"'\"'041'", preflight)
+        syntax = subprocess.run(
+            ["bash", "-n"],
+            input=preflight,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(syntax.returncode, 0, syntax.stderr)
 
     def test_never_overwrites_an_existing_install_file(self) -> None:
         self.output_path.write_text("existing", encoding="utf-8")
