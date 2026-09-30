@@ -44,6 +44,7 @@ Create a mode-`0600` JSON specification in a mode-`0700` directory:
   "device_id": "asset-041",
   "hostname": "asset-041",
   "username": "enrolloperator",
+  "disk_serial": "NVME-SERIAL-041",
   "password_hash": "<unique salted SHA-512 or yescrypt hash from your vault>"
 }
 ```
@@ -60,9 +61,23 @@ python3 render_autoinstall.py \
 ```
 
 The command refuses weak/invalid input, group-readable files and directories,
-unknown template markers, and existing outputs. It prints no secrets. Escrow
+unknown template markers, wildcard disk serials, an unapproved source ID, and
+existing outputs. The disk serial is rendered as an exact match so an
+unrelated largest disk cannot be selected. It prints no secrets. Escrow
 `recovery.json` before releasing the installation file. Treat the rendered YAML
 as a secret and use a distinct specification and render operation per device.
+
+The committed template pins `source.id: ubuntu-desktop`, the standard GNOME
+Ubuntu Desktop source. Before each release, verify that the approved Ubuntu
+Desktop ISO's `casper/install-sources.yaml` contains this ID. Canonical documents
+that source IDs are ISO-specific and that the ISO is the authoritative place to
+confirm them. A minimal Desktop source must be approved as a separate template
+change and validated against the target ISO; it is not silently substituted.
+
+The `disk_serial` value must be copied from the target device's hardware
+inventory or installer environment. Confirm the serial against the physical
+device before starting installation. Canonical's schema validator cannot prove
+that a serial matches a particular machine.
 
 ## Validate and install
 
@@ -71,7 +86,9 @@ as a secret and use a distinct specification and render operation per device.
 2. Validate the **rendered** YAML using Canonical's
    [`validate-autoinstall-user-data.py`](https://canonical-subiquity.readthedocs-hosted.com/en/latest/howto/autoinstall-validation.html).
    Canonical notes that schema validation cannot prove media and disk selection
-   are valid for a specific machine.
+   are valid for a specific machine. Validate against the same ISO used for the
+   installation, including its `casper/install-sources.yaml`, and manually
+   confirm the exact target serial.
 3. Perform a clean Ubuntu Desktop 24.04 installation in a VM with a disposable
    test specification before adopting a changed template. Verify GNOME login,
    a disabled root login, no SSH server, encrypted LVM, and recovery-key unlock.

@@ -17,7 +17,13 @@ autoinstall:
   storage:
     layout:
       name: lvm
+      match:
+        serial: !device DISK_SERIAL
       password: !device LUKS_PASSPHRASE
+  source:
+    # This is the standard GNOME Ubuntu Desktop source on the approved
+    # Ubuntu Desktop ISO. Verify casper/install-sources.yaml on every ISO.
+    id: ubuntu-desktop
   keyboard:
     layout: us
   locale: en_US.UTF-8

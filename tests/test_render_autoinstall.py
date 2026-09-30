@@ -30,6 +30,7 @@ class RenderAutoinstallTests(unittest.TestCase):
             "device_id": "asset-041",
             "hostname": "asset-041",
             "username": "enrolloperator",
+            "disk_serial": "NVME-SERIAL-041",
             "password_hash": "$6$uniquesalt$" + "A" * 86,
         }
         self._write_spec(self.spec)
@@ -50,7 +51,11 @@ class RenderAutoinstallTests(unittest.TestCase):
         document = yaml.safe_load(self.output_path.read_text(encoding="utf-8"))
         config = document["autoinstall"]
         self.assertEqual(config["storage"]["layout"]["name"], "lvm")
+        self.assertEqual(
+            config["storage"]["layout"]["match"]["serial"], "NVME-SERIAL-041"
+        )
         self.assertEqual(config["storage"]["layout"]["password"], "aB2_" * 12)
+        self.assertEqual(config["source"]["id"], "ubuntu-desktop")
         self.assertEqual(config["identity"]["hostname"], "asset-041")
         self.assertEqual(config["identity"]["groups"]["override"], ["sudo"])
         self.assertIs(config["user-data"]["disable_root"], True)
@@ -61,6 +66,7 @@ class RenderAutoinstallTests(unittest.TestCase):
         self.assertEqual(stat.S_IMODE(self.recovery_path.stat().st_mode), 0o600)
         recovery = json.loads(self.recovery_path.read_text(encoding="utf-8"))
         self.assertEqual(recovery["device_id"], "asset-041")
+        self.assertEqual(recovery["disk_serial"], "NVME-SERIAL-041")
         self.assertEqual(recovery["luks_passphrase"], "aB2_" * 12)
 
     def test_rejects_weak_identity_or_insecure_input_permissions(self) -> None:
@@ -75,6 +81,27 @@ class RenderAutoinstallTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "permissions"):
             render_device_autoinstall(
                 TEMPLATE, self.spec_path, self.output_path, self.recovery_path
+            )
+
+    def test_requires_exact_disk_serial_without_glob_matching(self) -> None:
+        for serial in ("", "  NVME-SERIAL", "NVME*", "NVME\nSERIAL"):
+            self._write_spec(dict(self.spec, disk_serial=serial))
+            with self.subTest(serial=serial), self.assertRaisesRegex(ValueError, "Disk serial"):
+                render_device_autoinstall(
+                    TEMPLATE, self.spec_path, self.output_path, self.recovery_path
+                )
+
+    def test_requires_approved_desktop_source(self) -> None:
+        source = self.private_dir / "server-template.yaml"
+        source.write_text(
+            TEMPLATE.read_text(encoding="utf-8").replace(
+                "id: ubuntu-desktop", "id: ubuntu-server"
+            ),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(ValueError, "approved GNOME"):
+            render_device_autoinstall(
+                source, self.spec_path, self.output_path, self.recovery_path
             )
 
     def test_never_overwrites_an_existing_install_file(self) -> None:

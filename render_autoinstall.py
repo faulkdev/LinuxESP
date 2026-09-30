@@ -16,14 +16,18 @@ import stat
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 _HOSTNAME = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\Z")
 _USERNAME = re.compile(r"[a-z_][a-z0-9_-]{1,30}\Z")
 _SHA512_HASH = re.compile(r"\$6\$[A-Za-z0-9./]{8,16}\$[A-Za-z0-9./]{86}\Z")
 _YESCRYPT_HASH = re.compile(r"\$y\$[A-Za-z0-9./$]{50,}\Z")
+_APPROVED_SOURCE_ID = "ubuntu-desktop"
 _MARKERS = {
     "HOSTNAME": "hostname",
     "USERNAME": "username",
     "PASSWORD_HASH": "password_hash",
+    "DISK_SERIAL": "disk_serial",
     "LUKS_PASSPHRASE": "luks_passphrase",
 }
 
@@ -47,11 +51,32 @@ def _private_directory(path: Path) -> None:
 def _validate_spec(value: Any) -> dict[str, str]:
     if not isinstance(value, dict):
         raise TypeError("Device specification must be a JSON object.")
-    required = {"device_id", "hostname", "username", "password_hash"}
+    required = {
+        "device_id",
+        "hostname",
+        "username",
+        "password_hash",
+        "disk_serial",
+    }
     if set(value) != required or any(not isinstance(value[key], str) for key in required):
-        raise ValueError("Device specification requires only device_id, hostname, username and password_hash.")
+        raise ValueError(
+            "Device specification requires only device_id, hostname, username, "
+            "disk_serial and password_hash."
+        )
     if not _HOSTNAME.fullmatch(value["device_id"]) or not _HOSTNAME.fullmatch(value["hostname"]):
-        raise ValueError("Device ID and hostname must be valid, distinct inventory labels.")
+        raise ValueError("Device ID and hostname must be valid inventory labels.")
+    disk_serial = value["disk_serial"]
+    if (
+        not 1 <= len(disk_serial) <= 255
+        or disk_serial != disk_serial.strip()
+        or not any(not character.isspace() for character in disk_serial)
+        or any(ord(character) < 0x21 or ord(character) == 0x7F for character in disk_serial)
+        or any(character in "*?[]" for character in disk_serial)
+    ):
+        raise ValueError(
+            "Disk serial must be a non-empty exact udev serial without whitespace "
+            "padding, control characters or glob wildcards."
+        )
     if not _USERNAME.fullmatch(value["username"]) or value["username"] in {"root", "ubuntu"}:
         raise ValueError("Use a named, non-root device username.")
     password_hash = value["password_hash"]
@@ -96,6 +121,15 @@ def render_device_autoinstall(
     template = template_path.read_text(encoding="utf-8")
     if not template.startswith("#cloud-config\n"):
         raise ValueError("Template must start with #cloud-config.")
+    try:
+        template_document = yaml.load(template, Loader=yaml.BaseLoader)
+        source_id = template_document["autoinstall"]["source"]["id"]
+    except (KeyError, TypeError, yaml.YAMLError) as error:
+        raise ValueError("Template must contain an Ubuntu Desktop source id.") from error
+    if source_id != _APPROVED_SOURCE_ID:
+        raise ValueError(
+            f"Template must pin the approved GNOME Ubuntu Desktop source id {_APPROVED_SOURCE_ID!r}."
+        )
     rendered = template
     for marker, key in _MARKERS.items():
         token = f"!device {marker}"
@@ -106,7 +140,12 @@ def render_device_autoinstall(
         raise ValueError("Template contains an unknown device marker.")
 
     recovery = json.dumps(
-        {"device_id": spec["device_id"], "hostname": spec["hostname"], "luks_passphrase": passphrase},
+        {
+            "device_id": spec["device_id"],
+            "hostname": spec["hostname"],
+            "disk_serial": spec["disk_serial"],
+            "luks_passphrase": passphrase,
+        },
         indent=2,
     ) + "\n"
     _create_private_file(output_path, rendered)
