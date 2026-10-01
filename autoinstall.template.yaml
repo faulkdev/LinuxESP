@@ -1,0 +1,62 @@
+#cloud-config
+# Render this template per device with render_autoinstall.py. Required tags
+# intentionally make the published template invalid for direct installation.
+autoinstall:
+  version: 1
+  identity:
+    hostname: !device HOSTNAME
+    username: !device USERNAME
+    password: !device PASSWORD_HASH
+  user-data:
+    disable_root: true
+    ssh_pwauth: false
+  ssh:
+    install-server: false
+  early-commands:
+    - |
+      set -eu
+      expected_serial=!device DISK_SERIAL_SHELL
+      device_list="$(lsblk -dnpo NAME,TYPE)" || {
+        echo "Unable to enumerate whole disks; refusing installation." >&2
+        exit 1
+      }
+      matches=0
+      matched_device=""
+      while read -r device device_type; do
+        [ "$device_type" = "disk" ] || continue
+        serial="$(udevadm info --query=property --name="$device" | awk -F= '$1 == "ID_SERIAL" {print substr($0, index($0, "=") + 1); exit}')"
+        if [ "$serial" = "$expected_serial" ]; then
+          matches=$((matches + 1))
+          matched_device="$device"
+        fi
+      done <<EOF
+      $device_list
+      EOF
+      if [ "$matches" -ne 1 ]; then
+        echo "Expected exactly one whole disk with ID_SERIAL=$expected_serial; found $matches." >&2
+        exit 1
+      fi
+      echo "Verified unique installation disk: $matched_device"
+  storage:
+    layout:
+      name: lvm
+      match:
+        serial: !device DISK_SERIAL
+      password: !device LUKS_PASSPHRASE
+  source:
+    # This is the standard GNOME Ubuntu Desktop source on the approved
+    # Ubuntu Desktop ISO. Verify casper/install-sources.yaml on every ISO.
+    id: ubuntu-desktop
+  oem:
+    install: false
+  drivers:
+    install: false
+  keyboard:
+    layout: us
+  locale: en_US.UTF-8
+  timezone: Etc/UTC
+  updates: security
+  apt:
+    fallback: abort
+    geoip: false
+  shutdown: reboot
