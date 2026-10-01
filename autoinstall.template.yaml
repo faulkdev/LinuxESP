@@ -7,8 +7,6 @@ autoinstall:
     hostname: !device HOSTNAME
     username: !device USERNAME
     password: !device PASSWORD_HASH
-    groups:
-      override: [sudo]
   user-data:
     disable_root: true
     ssh_pwauth: false

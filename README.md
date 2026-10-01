@@ -20,7 +20,8 @@ after installation. The generated file itself does not establish compliance.
   managed Desktop lane.
 - A protected device inventory entry, a unique salted local password hash from
   the approved credential vault, and an approved location for the LUKS recovery
-  record. The local account has the `sudo` group for installation operations;
+  record. The installer-created local account receives its default `sudo`
+  access for installation operations;
   root login and SSH server installation are disabled.
 - A private output directory owned by the operator with mode `0700`.
 - A protected delivery channel for the rendered configuration. Never host it at

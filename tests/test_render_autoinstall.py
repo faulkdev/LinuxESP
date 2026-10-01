@@ -65,7 +65,9 @@ class RenderAutoinstallTests(unittest.TestCase):
         self.assertIn("ID_SERIAL", preflight)
         self.assertIn('[ "$matches" -ne 1 ]', preflight)
         self.assertEqual(config["identity"]["hostname"], "asset-041")
-        self.assertEqual(config["identity"]["groups"]["override"], ["sudo"])
+        # The approved Desktop ISO's embedded Subiquity rejects identity.groups;
+        # its default identity user receives sudo access.
+        self.assertNotIn("groups", config["identity"])
         self.assertIs(config["user-data"]["disable_root"], True)
         self.assertIs(config["ssh"]["install-server"], False)
         self.assertEqual(config.get("packages"), None)
