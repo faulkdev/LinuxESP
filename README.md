@@ -106,6 +106,8 @@ that a serial matches a particular machine.
    disk matching or device support. `oem.install: false` and
    `drivers.install: false` are explicit baseline choices; hardware requiring a
    driver needs a separately reviewed, signed package decision.
+   The current Ubuntu 24.04.4 Desktop test is recorded in
+   [VM-VALIDATION.md](VM-VALIDATION.md).
 4. Deliver each rendered file through an authenticated, expiring endpoint or
    protected removable media. Confirm the selected target disk before install.
    Revoke the endpoint afterward and record installation and recovery escrow
